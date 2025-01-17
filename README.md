@@ -3,6 +3,7 @@
 > [!IMPORTANT]  
 > This repository is a fork of https://github.com/gtarawneh/languagetool-sublime which no longer seems to be updated. 
 > It fixed some critical issue pointed [here](https://github.com/gtarawneh/languagetool-sublime/issues/41) and solved [here](https://github.com/gtarawneh/languagetool-sublime/pull/42) by @rmalouf but not merged. 
+> Moreover, we clarify messages based on API limits.
 
 #### Overview
 
