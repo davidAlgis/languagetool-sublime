@@ -1,5 +1,9 @@
 ### LanguageTool for Sublime Text 2/3
 
+> [!IMPORTANT]  
+> This repository is a fork of https://github.com/gtarawneh/languagetool-sublime which no longer seems to be updated. 
+> It fixed some critical issue pointed [here](https://github.com/gtarawneh/languagetool-sublime/issues/41) and solved [here](https://github.com/gtarawneh/languagetool-sublime/pull/42) by @rmalouf but not merged. 
+
 #### Overview
 
 This is a simple adapter to integrate
@@ -16,13 +20,18 @@ From https://www.languagetool.org/:
 
 #### Installation
 
-If you're using Package Control then open up the command palette
+~~If you're using Package Control then open up the command palette
 (<kbd>ctrl+shift+p</kbd>), type `install`, press Enter then type
-`languagetool` and press Enter again.
+`languagetool` and press Enter again.~~
 
-To get the latest updates before they get released, install via `Package
+~~To get the latest updates before they get released, install via `Package
 Control: Add Repository`. This will update your plugin with new commits as
-they are being pushed to the repo.
+they are being pushed to the repo.~~
+
+As this is a fork of the original repository, you need to manually install it by:
+- Open the package folder with `Preferences > Browse Packages...`
+- Clone this fork in this folder with this command: `git clone https://github.com/davidAlgis/languagetool-sublime.git` 
+- __Or__ if you are not comfortable with command and terminal stuff you can [download the repository](https://github.com/davidAlgis/languagetool-sublime/archive/refs/heads/master.zip) and unzip it in the package folder) 
 
 #### Usage
 
