@@ -224,12 +224,17 @@ def check_api_limits(check_text):
 def is_user_added_word(word):
     """
     Returns True if `word` is in the user's "added_words" list
-    from Packages/User/Preferences.sublime-settings (case-insensitive).
+    and if the "ignored_added_word" setting is enabled.
     """
+    settings = get_settings()
+    if not settings.get("ignored_added_word", True):
+        # If the setting is False, do not ignore added words
+        return False
+
     pref_settings = sublime.load_settings("Preferences.sublime-settings")
     user_words = pref_settings.get("added_words", [])
 
-    # Convert both sides to lowercase for comparison
+    # Case-insensitive comparison
     user_words_lower = {w.lower() for w in user_words}
     return word.lower() in user_words_lower
 

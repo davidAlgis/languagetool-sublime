@@ -10,5 +10,6 @@
         "meta.*.latex",
         "comment.*.tex",
         "keyword.control.tex"
-    ]
+    ],
+    "ignored_added_word": true,
 }
