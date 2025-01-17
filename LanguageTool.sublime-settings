@@ -1,16 +1,26 @@
 {
+    // The URL for the remote LanguageTool server (default: public API).
     "languagetool_server_remote": "https://languagetool.org/api/v2/check",
+    // The URL for a local LanguageTool server. Requires a local installation.
     "languagetool_server_local": "http://localhost:8081/v2/check",
+    // Specifies which server to use by default: "remote" or "local".
     "default_server": "remote",
+    // Determines where error messages and suggestions are displayed.
+    // Options: "panel" (bottom panel) or "status_bar".
     "display_mode": "panel",
+    // Path to the local LanguageTool JAR file, required for starting a local server.
     "languagetool_jar": "C:\\bin\\LanguageTool-3.5\\languagetool.jar",
+    // The syntax scope used to highlight detected issues in the text.
     "highlight-scope": "comment",
+    // A list of syntax scopes to ignore during checks.
     "ignored-scopes": [
-        "support.function.*.latex",
-        "meta.*.latex",
-        "comment.*.tex",
-        "keyword.control.tex"
+        "support.function.*.latex", // Ignore LaTeX function support.
+        "meta.*.latex", // Ignore LaTeX meta syntax.
+        "comment.*.tex", // Ignore comments in TeX files.
+        "keyword.control.tex" // Ignore TeX control keywords.
     ],
+    // If true, words in the user's "added_words" list are not highlighted.
     "ignored_added_word": true,
-    "ignored_tex_math": true,
+    // If true, content inside math LaTeX blocks (e.g., $...$) or custom functions (e.g., \function{...}) is not highlighted.
+    "ignored_tex_math": true
 }
