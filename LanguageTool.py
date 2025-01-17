@@ -96,6 +96,7 @@ def show_panel_text(text):
 
 
 class setLanguageToolPanelTextCommand(sublime_plugin.TextCommand):
+
     def run(self, edit, str):
         window = sublime.active_window()
         pt = window.get_output_panel("languagetool")
@@ -107,6 +108,7 @@ class setLanguageToolPanelTextCommand(sublime_plugin.TextCommand):
 
 
 class gotoNextLanguageProblemCommand(sublime_plugin.TextCommand):
+
     def run(self, edit, jump_forward=True):
         v = self.view
         problems = v.__dict__.get("problems", [])
@@ -125,12 +127,12 @@ class gotoNextLanguageProblemCommand(sublime_plugin.TextCommand):
                         select_problem(v, p)
                         return
         set_status_bar("no further language problems to fix")
-        sublime.active_window().run_command("hide_panel", {
-            "panel": "output.languagetool"
-        })
+        sublime.active_window().run_command("hide_panel",
+                                            {"panel": "output.languagetool"})
 
 
 class clearLanguageProblemsCommand(sublime_plugin.TextCommand):
+
     def run(self, edit):
         v = self.view
         problems = v.__dict__.get("problems", [])
@@ -140,13 +142,13 @@ class clearLanguageProblemsCommand(sublime_plugin.TextCommand):
         recompute_highlights(v)
         caretPos = self.view.sel()[0].end()
         v.sel().clear()
-        sublime.active_window().run_command("hide_panel", {
-            "panel": "output.languagetool"
-        })
+        sublime.active_window().run_command("hide_panel",
+                                            {"panel": "output.languagetool"})
         move_caret(v, caretPos, caretPos)
 
 
 class markLanguageProblemSolvedCommand(sublime_plugin.TextCommand):
+
     def run(self, edit, apply_fix):
 
         v = self.view
@@ -178,6 +180,7 @@ class markLanguageProblemSolvedCommand(sublime_plugin.TextCommand):
             # After ignoring problem:
             move_caret(v, next_caret_pos, next_caret_pos)  # advance caret
             v.run_command("goto_next_language_problem")
+
 
 def choose_suggestion(view, p, replacements, choice):
     """Handle suggestion list selection."""
@@ -237,25 +240,27 @@ class startLanguageToolServerCommand(sublime_plugin.TextCommand):
 
         sublime.status_message('Starting local LanguageTool server ...')
 
-        cmd = ['java', '-cp', jar_path, 'org.languagetool.server.HTTPServer', '--port', '8081']
+        cmd = [
+            'java', '-cp', jar_path, 'org.languagetool.server.HTTPServer',
+            '--port', '8081'
+        ]
 
         if sublime.platform() == "windows":
-            p = subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                shell=True,
-                creationflags=subprocess.SW_HIDE)
+            p = subprocess.Popen(cmd,
+                                 stdin=subprocess.PIPE,
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE,
+                                 shell=True,
+                                 creationflags=subprocess.SW_HIDE)
         else:
-            p = subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE)
+            p = subprocess.Popen(cmd,
+                                 stdin=subprocess.PIPE,
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
 
 
 class changeLanguageToolLanguageCommand(sublime_plugin.TextCommand):
+
     def run(self, edit):
         self.view.languages = LanguageList.languages
         languageNames = [x[0] for x in self.view.languages]
@@ -280,9 +285,11 @@ def correct_problem(view, edit, problem, replacements):
         view.run_command("goto_next_language_problem")
 
     if len(replacements) > 1:
+
         def callback_fun(i):
             choose_suggestion(view, problem, replacements, i)
             clear_and_advance()
+
         view.window().show_quick_panel(replacements, callback_fun)
 
     else:
@@ -337,6 +344,7 @@ def get_server_url(settings, force_server):
 
 
 class LanguageToolCommand(sublime_plugin.TextCommand):
+
     def run(self, edit, force_server=None):
 
         settings = get_settings()
@@ -386,13 +394,14 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
             self.view.add_regions(region_key, [region], highlight_scope, "",
                                   sublime.DRAW_OUTLINED)
 
-
         shifter = lambda problem: shift_offset(problem, check_region.a)
 
         get_problem = compose(shifter, parse_match)
 
-        problems = [problem for problem in map(get_problem, matches)
-                    if inside(problem) and not is_ignored(problem)]
+        problems = [
+            problem for problem in map(get_problem, matches)
+            if inside(problem) and not is_ignored(problem)
+        ]
 
         for index, problem in enumerate(problems):
             add_highlight_region(str(index), problem)
@@ -407,8 +416,10 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
 
 def compose(f1, f2):
     """Compose two functions."""
+
     def inner(*args, **kwargs):
         return f1(f2(*args, **kwargs))
+
     return inner
 
 
@@ -459,6 +470,7 @@ def parse_match(match):
 
 
 class DeactivateRuleCommand(sublime_plugin.TextCommand):
+
     def run(self, edit):
         ignored = load_ignored_rules()
         v = self.view
@@ -489,6 +501,7 @@ class DeactivateRuleCommand(sublime_plugin.TextCommand):
 
 
 class ActivateRuleCommand(sublime_plugin.TextCommand):
+
     def run(self, edit):
         ignored = load_ignored_rules()
         if ignored:
@@ -509,6 +522,7 @@ class ActivateRuleCommand(sublime_plugin.TextCommand):
 
 
 class LanguageToolListener(sublime_plugin.EventListener):
+
     def on_modified(self, view):
         # buffer text was changed, recompute region highlights
         recompute_highlights(view)
