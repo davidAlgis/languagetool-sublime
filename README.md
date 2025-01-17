@@ -67,14 +67,14 @@ service is subject to usage constraints including:
 1. Maximum text size of 50Kb
 2. Access limited to 20 requests/minute per IP
 
-(See http://wiki.languagetool.org/public-http-api for full details.)
+(See https://dev.languagetool.org/public-http-api for full details.)
 
 Instead of using the public (remote) LanguageTool service, text can be checked
 using a local LanguageTool Installation. A local LanguageTool server can be
 started by the plugin itself using the command `LanguageTool: Start Local
 Server` (this requires the settings entry `languagetool_jar` to point to the
 local languagetool JAR file), or from the command line following the
-instructions in http://wiki.languagetool.org/http-server.
+instructions in https://dev.languagetool.org/http-server.
 
 The settings file contains remote and local server URL entries. A third option
 `default_server` indicates which of these is used when the command
