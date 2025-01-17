@@ -3,7 +3,13 @@
 > [!IMPORTANT]  
 > This repository is a fork of https://github.com/gtarawneh/languagetool-sublime which no longer seems to be updated. 
 > It fixed some critical issue pointed [here](https://github.com/gtarawneh/languagetool-sublime/issues/41) and solved [here](https://github.com/gtarawneh/languagetool-sublime/pull/42) by @rmalouf but not merged. 
-> Moreover, we clarify messages based on API limits.
+
+Here is a list of the features that has been added in this fork:
+- Messages have been clarified based on API limits.
+- Make possible to handle large text by splitting it chunk by chunk.
+- Words in the added_words list are now ignored during highlighting regardless of case.
+- Highlighting skips content inside $...$ or custom LaTeX functions (e.g., \function{...}) if ignored_tex_math is enabled.
+- We improved settings to be more consistent with "sublime text standard".
 
 #### Overview
 
@@ -33,6 +39,7 @@ As this is a fork of the original repository, you need to manually install it by
 - Open the package folder with `Preferences > Browse Packages...`
 - Clone this fork in this folder with this command: `git clone https://github.com/davidAlgis/languagetool-sublime.git` 
 - __Or__ if you are not comfortable with command and terminal stuff you can [download the repository](https://github.com/davidAlgis/languagetool-sublime/archive/refs/heads/master.zip) and unzip it in the package folder) 
+- Make sure to have a folder named ``LanguageTool`` or the settings won't works.
 
 #### Usage
 
