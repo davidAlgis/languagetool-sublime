@@ -11,6 +11,14 @@ import subprocess
 import os.path
 import fnmatch
 import itertools
+import time
+from collections import deque
+
+REQUEST_TIMESTAMPS = deque()  # queue of (timestamp, text_size)
+# based on language tools API limits defined on https://dev.languagetool.org/public-http-api
+MAX_REQUESTS_PER_MINUTE = 20
+MAX_BYTES_PER_MINUTE = 75 * 1024  # 75KB
+MAX_BYTES_PER_REQUEST = 20 * 1024  # 20KB
 
 
 def _is_ST2():
@@ -343,10 +351,52 @@ def get_server_url(settings, force_server):
     return server
 
 
+def prune_usage_deque():
+    """Remove entries older than 60 seconds and return 
+    (current_request_count, current_byte_sum) after pruning."""
+    now = time.time()
+
+    # Pop from the left if older than 60 seconds
+    while REQUEST_TIMESTAMPS and (now - REQUEST_TIMESTAMPS[0][0] > 60):
+        REQUEST_TIMESTAMPS.popleft()
+
+    # Compute how many requests remain and total bytes
+    total_requests = len(REQUEST_TIMESTAMPS)
+    total_bytes = sum(entry[1] for entry in REQUEST_TIMESTAMPS)
+    return total_requests, total_bytes
+
+
+def check_api_limits(check_text):
+    """Check if the current request exceeds any API limits and return a status message if it does.
+    Args:
+        check_text (str): The text to be sent in the request.
+
+    Returns:
+        str: An error message if any limit is exceeded, None otherwise.
+    """
+    # 1. Prune old entries and get current usage
+    current_requests, current_bytes = prune_usage_deque()
+
+    # 2. Check if the text exceeds the single-request size limit
+    if len(check_text.encode('utf-8')) > MAX_BYTES_PER_REQUEST:
+        return "LanguageTool: The selected text is larger than 20KB; cannot check it."
+
+    # 3. Check if adding this text exceeds the total 75KB per minute limit
+    if (current_bytes +
+            len(check_text.encode('utf-8'))) > MAX_BYTES_PER_MINUTE:
+        return "LanguageTool: You have reached the 75KB per minute limit; please wait."
+
+    # 4. Check if the total number of requests exceeds the 20 per minute limit
+    if current_requests >= MAX_REQUESTS_PER_MINUTE:
+        return "LanguageTool: You have reached 20 requests per minute limit; please wait."
+
+    # If all checks pass, return None
+    return None
+
+
 class LanguageToolCommand(sublime_plugin.TextCommand):
 
     def run(self, edit, force_server=None):
-
         settings = get_settings()
         server_url = get_server_url(settings, force_server)
         ignored_scopes = settings.get('ignored-scopes')
@@ -357,6 +407,17 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
         check_region = everything if selection.empty() else selection
         check_text = self.view.substr(check_region)
 
+        # [A] Check API limits
+        error_message = check_api_limits(check_text)
+        if error_message:
+            set_status_bar(error_message)
+            return
+
+        # If it passes all checks, record the usage
+        REQUEST_TIMESTAMPS.append(
+            (time.time(), len(check_text.encode('utf-8'))))
+
+        # Continue with existing logic
         self.view.run_command("clear_language_problems")
 
         language = self.view.settings().get('language_tool_language', 'auto')
@@ -365,9 +426,10 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
         matches = LTServer.getResponse(server_url, check_text, language,
                                        ignored_ids)
 
-        if matches == None:
-            set_status_bar('could not parse server response (may be due to'
-                           ' quota if using https://languagetool.org)')
+        if matches is None:
+            set_status_bar(
+                "LanguageTool: could not parse server response (quota might be reached if using free API)."
+            )
             return
 
         def get_region(problem):
