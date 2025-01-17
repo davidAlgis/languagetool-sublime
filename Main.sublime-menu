@@ -13,21 +13,12 @@
                         "caption": "LanguageTool",
                         "children": [
                             {
-                                "caption": "Settings – Default",
+                                "caption": "Settings",
+                                "command": "edit_settings",
                                 "args": {
-                                    "file": "${packages}/LanguageTool/LanguageTool.sublime-settings"
-                                },
-                                "command": "open_file"
-                            },
-                            {
-                                "caption": "Settings – User",
-                                "args": {
-                                    "file": "${packages}/User/LanguageTool.sublime-settings"
-                                },
-                                "command": "open_file"
-                            },
-                            {
-                                "caption": "-"
+                                    "base_file": "${packages}/LanguageTool/LanguageTool.sublime-settings",
+                                    "default": "{\n\t$0\n}\n"
+                                }
                             }
                         ]
                     }

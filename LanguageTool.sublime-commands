@@ -4,6 +4,13 @@
 		"command": "language_tool"
 	},
 	{
+		"caption": "Preferences: LanguageTool Settings",
+		"command": "edit_settings",
+		"args": {
+			"base_file": "${packages}/LanguageTool/LanguageTool.sublime-settings",
+        	"default": "{\n\t$0\n}\n"}
+	},
+	{
 		"caption": "LanguageTool: Check Text (Local Server)",
 		"command": "language_tool",
 		"args": {"force_server": "local"}

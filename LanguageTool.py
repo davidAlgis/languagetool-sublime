@@ -13,6 +13,7 @@ import fnmatch
 import itertools
 import time
 from collections import deque
+from .settings import languageToolSettings
 
 #########################
 # Original Helper: ST2 or ST3
@@ -158,7 +159,7 @@ def prompt_user_for_chunks(view, chunk_data_list):
 
 
 def get_settings():
-    return sublime.load_settings('LanguageTool.sublime-settings')
+    return languageToolSettings()
 
 
 def get_server_url(settings, force_server):
