@@ -216,6 +216,24 @@ def check_api_limits(check_text):
 
 
 #########################
+# SUBLIME USER DICTIONARY CHECK
+#########################
+
+
+def is_user_added_word(word):
+    """
+    Returns True if `word` is in the user's "added_words" list
+    from Packages/User/Preferences.sublime-settings (case-insensitive).
+    """
+    pref_settings = sublime.load_settings("Preferences.sublime-settings")
+    user_words = pref_settings.get("added_words", [])
+
+    # Convert both sides to lowercase for comparison
+    user_words_lower = {w.lower() for w in user_words}
+    return word.lower() in user_words_lower
+
+
+#########################
 # EVENT LISTENER + REHIGHLIGHT
 #########################
 
@@ -389,7 +407,12 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
         def is_ignored(problem):
             scope_string = self.view.scope_name(problem['offset'])
             scopes = scope_string.split()
-            return cross_match(scopes, ignored_scopes, fnmatch.fnmatch)
+            if cross_match(scopes, ignored_scopes, fnmatch.fnmatch):
+                return True
+
+            # <-- NEW or CHANGED: skip if user dictionary has it
+            # We'll use problem['orgContent'] once we set it below
+            return False
 
         shifter = lambda p: shift_offset(p, check_region.a)
         get_problem = compose(shifter, parse_match)
@@ -397,24 +420,37 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
         problems = []
         for match in matches:
             prob = get_problem(match)
-            reg = get_region(prob)
-            if inside(reg) and not is_ignored(prob):
+            region = get_region(prob)
+            if inside(region):
                 problems.append(prob)
 
         # 6) Highlight problems
+        final_problems = []
         for index, p in enumerate(problems):
             region = sublime.Region(p['offset'], p['offset'] + p['length'])
             p['orgContent'] = self.view.substr(region)
+
+            # Check scope ignores:
+            scope_string = self.view.scope_name(p['offset'])
+            scopes = scope_string.split()
+            if cross_match(scopes, ignored_scopes, fnmatch.fnmatch):
+                continue
+
+            # <-- NEW or CHANGED: skip if in "added_words"
+            if is_user_added_word(p['orgContent']):
+                continue
+
             p['regionKey'] = str(index)
             self.view.add_regions(str(index), [region], highlight_scope, "",
                                   sublime.DRAW_OUTLINED)
+            final_problems.append(p)
 
         # 7) If any, select the first
-        if problems:
-            select_problem(self.view, problems[0])
+        if final_problems:
+            select_problem(self.view, final_problems[0])
         else:
             set_status_bar("no language problems were found :-)")
-        self.view.problems = problems
+        self.view.problems = final_problems
 
 
 #########################
@@ -464,15 +500,25 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
         ignored_scopes = settings.get('ignored-scopes')
         problems = []
 
-        # Add offset_in_original to each match
         for i, match in enumerate(matches):
             p = parse_match(match)
             p['offset'] += offset_in_original  # SHIFT
 
-            # Check if ignored by scope
+            # We'll get the region
+            start = p['offset']
+            end = p['offset'] + p['length']
+            region = sublime.Region(start, end)
+
+            p['orgContent'] = self.view.substr(region)
+
+            # Check scope ignores
             scope_string = self.view.scope_name(p['offset'])
             scopes = scope_string.split()
             if cross_match(scopes, ignored_scopes, fnmatch.fnmatch):
+                continue
+
+            # <-- NEW or CHANGED: skip if in "added_words"
+            if is_user_added_word(p['orgContent']):
                 continue
 
             problems.append(p)
@@ -481,10 +527,9 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
         for index, p in enumerate(problems):
             region_key = "chunk-" + str(index)
             region = sublime.Region(p['offset'], p['offset'] + p['length'])
-            p['orgContent'] = self.view.substr(region)
-            p['regionKey'] = region_key
             self.view.add_regions(region_key, [region], highlight_scope, "",
                                   sublime.DRAW_OUTLINED)
+            p['regionKey'] = region_key
 
         if problems:
             select_problem(self.view, problems[0])
