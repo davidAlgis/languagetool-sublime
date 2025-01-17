@@ -73,16 +73,12 @@ def is_tex_math_content(view, region):
 
     # Check if ignored_tex_math is enabled
     if not settings.get("ignored_tex_math", True):
-        print("[DEBUG] ignored_tex_math is disabled.")
         return False
 
     # Check if we are in a TeX file by syntax or file extension
     syntax = view.settings().get("syntax", "").lower()
     if not ("tex" in syntax or view.file_name().lower().endswith(
         (".tex", ".latex"))):
-        print(
-            "[DEBUG] File is not recognized as a TeX file (syntax: {}, file: {})."
-            .format(syntax, view.file_name()))
         return False
 
     # Get the entire buffer's content
@@ -99,18 +95,13 @@ def is_tex_math_content(view, region):
     for match in math_pattern.finditer(full_text):
         match_start, match_end = match.span()
         if match_start <= region_start and region_end <= match_end:
-            print("[DEBUG] Region is inside math block: '{}'.".format(
-                match.group()))
             return True
 
     for match in function_pattern.finditer(full_text):
         match_start, match_end = match.span()
         if match_start <= region_start and region_end <= match_end:
-            print("[DEBUG] Region is inside LaTeX function: '{}'.".format(
-                match.group()))
             return True
 
-    print("[DEBUG] Region is not in a math block or LaTeX function.")
     return False
 
 
