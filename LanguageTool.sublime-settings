@@ -12,4 +12,5 @@
         "keyword.control.tex"
     ],
     "ignored_added_word": true,
+    "ignored_tex_math": true,
 }

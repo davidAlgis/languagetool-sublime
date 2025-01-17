@@ -12,6 +12,7 @@ import os.path
 import fnmatch
 import itertools
 import time
+import re
 from collections import deque
 from .settings import languageToolSettings
 
@@ -54,6 +55,63 @@ def prune_usage_deque():
 #########################
 # UTILS
 #########################
+
+
+def is_tex_math_content(view, region):
+    """
+    Checks if a given region is inside a math block or LaTeX function.
+    Works only if:
+        1. The current file is a TeX file.
+        2. The "ignored_tex_math" setting is enabled.
+    Args:
+        view (sublime.View): The current view.
+        region (sublime.Region): The region to check.
+    Returns:
+        bool: True if the region is inside a math block or LaTeX function.
+    """
+    settings = get_settings()
+
+    # Check if ignored_tex_math is enabled
+    if not settings.get("ignored_tex_math", True):
+        print("[DEBUG] ignored_tex_math is disabled.")
+        return False
+
+    # Check if we are in a TeX file by syntax or file extension
+    syntax = view.settings().get("syntax", "").lower()
+    if not ("tex" in syntax or view.file_name().lower().endswith(
+        (".tex", ".latex"))):
+        print(
+            "[DEBUG] File is not recognized as a TeX file (syntax: {}, file: {})."
+            .format(syntax, view.file_name()))
+        return False
+
+    # Get the entire buffer's content
+    full_text = view.substr(sublime.Region(0, view.size()))
+
+    # Define patterns for math blocks and custom LaTeX functions
+    math_pattern = re.compile(r"\$(.*?)\$")  # Matches $...$
+    function_pattern = re.compile(r"\\\w+\{.*?\}")  # Matches \function{...}
+
+    # Check if the region is inside any math block or function
+    region_start = region.begin()
+    region_end = region.end()
+
+    for match in math_pattern.finditer(full_text):
+        match_start, match_end = match.span()
+        if match_start <= region_start and region_end <= match_end:
+            print("[DEBUG] Region is inside math block: '{}'.".format(
+                match.group()))
+            return True
+
+    for match in function_pattern.finditer(full_text):
+        match_start, match_end = match.span()
+        if match_start <= region_start and region_end <= match_end:
+            print("[DEBUG] Region is inside LaTeX function: '{}'.".format(
+                match.group()))
+            return True
+
+    print("[DEBUG] Region is not in a math block or LaTeX function.")
+    return False
 
 
 def set_status_bar(message):
@@ -442,8 +500,12 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
             if cross_match(scopes, ignored_scopes, fnmatch.fnmatch):
                 continue
 
-            # <-- NEW or CHANGED: skip if in "added_words"
             if is_user_added_word(p['orgContent']):
+                continue
+
+            if is_tex_math_content(
+                    self.view,
+                    sublime.Region(p['offset'], p['offset'] + p['length'])):
                 continue
 
             p['regionKey'] = str(index)
@@ -523,8 +585,12 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
             if cross_match(scopes, ignored_scopes, fnmatch.fnmatch):
                 continue
 
-            # <-- NEW or CHANGED: skip if in "added_words"
+            # Skip if in "added_words"
             if is_user_added_word(p['orgContent']):
+                continue
+
+            # Skip if in math LaTeX content
+            if is_tex_math_content(self.view, region):
                 continue
 
             problems.append(p)
