@@ -37,7 +37,7 @@ they are being pushed to the repo.~~
 
 As this is a fork of the original repository, you need to manually install it by:
 - Open the package folder with `Preferences > Browse Packages...`
-- Clone this fork in this folder with this command: `git clone https://github.com/davidAlgis/languagetool-sublime.git` 
+- Clone this fork in this folder with this command: `git clone https://github.com/davidAlgis/languagetool-sublime.git LanguageTool` 
 - __Or__ if you are not comfortable with command and terminal stuff you can [download the repository](https://github.com/davidAlgis/languagetool-sublime/archive/refs/heads/master.zip) and unzip it in the package folder) 
 - Make sure to have a folder named ``LanguageTool`` or the settings won't works.
 
