@@ -21,6 +21,10 @@
     ],
     // If true, words in the user's "added_words" list are not highlighted.
     "ignored_added_word": true,
-    // If true, content inside math LaTeX blocks (e.g., $...$) or custom functions (e.g., \function{...}) is not highlighted.
-    "ignored_tex_math": true
+    // User-defined regex patterns for ignoring specific regions
+    // for example to not highlight content between $ $ in latex 
+    // you can use "\\$[^$]*\\$" or to remove content between some 
+    // specif macro like \macro{do_not_highlight} you can use
+    // "\\\\[a-zA-Z]+\\{[^}]*\\}"
+    "ignored_regex": []
 }

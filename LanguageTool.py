@@ -55,52 +55,43 @@ def prune_usage_deque():
 #########################
 # UTILS
 #########################
-
-
-def is_tex_math_content(view, region):
+def ignored_regex(view, region):
     """
-    Checks if a given region is inside a math block or LaTeX function.
-    Works only if:
-        1. The current file is a TeX file.
-        2. The "ignored_tex_math" setting is enabled.
+    Checks if a given region matches any user-defined regex patterns to be ignored.
     Args:
         view (sublime.View): The current view.
         region (sublime.Region): The region to check.
     Returns:
-        bool: True if the region is inside a math block or LaTeX function.
+        bool: True if the region matches any of the ignored regex patterns.
     """
     settings = get_settings()
 
-    # Check if ignored_tex_math is enabled
-    if not settings.get("ignored_tex_math", True):
+    # Get user-defined regex patterns
+    ignored_patterns = settings.get("ignored_regex", [])
+    if not ignored_patterns:
         return False
 
-    # Check if we are in a TeX file by syntax or file extension
-    syntax = view.settings().get("syntax", "").lower()
-    if not ("tex" in syntax or view.file_name().lower().endswith(
-        (".tex", ".latex"))):
+    # Compile the regex patterns
+    try:
+        compiled_patterns = [
+            re.compile(pattern) for pattern in ignored_patterns
+        ]
+    except re.error as e:
         return False
 
     # Get the entire buffer's content
     full_text = view.substr(sublime.Region(0, view.size()))
 
-    # Define patterns for math blocks and custom LaTeX functions
-    math_pattern = re.compile(r"\$(.*?)\$")  # Matches $...$
-    function_pattern = re.compile(r"\\\w+\{.*?\}")  # Matches \function{...}
-
-    # Check if the region is inside any math block or function
+    # Get the region's start and end positions
     region_start = region.begin()
     region_end = region.end()
 
-    for match in math_pattern.finditer(full_text):
-        match_start, match_end = match.span()
-        if match_start <= region_start and region_end <= match_end:
-            return True
-
-    for match in function_pattern.finditer(full_text):
-        match_start, match_end = match.span()
-        if match_start <= region_start and region_end <= match_end:
-            return True
+    # Check if the region matches any of the regex patterns
+    for pattern in compiled_patterns:
+        for match in pattern.finditer(full_text):
+            match_start, match_end = match.span()
+            if match_start <= region_start and region_end <= match_end:
+                return True
 
     return False
 
@@ -494,7 +485,7 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
             if is_user_added_word(p['orgContent']):
                 continue
 
-            if is_tex_math_content(
+            if ignored_regex(
                     self.view,
                     sublime.Region(p['offset'], p['offset'] + p['length'])):
                 continue
@@ -581,7 +572,7 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
                 continue
 
             # Skip if in math LaTeX content
-            if is_tex_math_content(self.view, region):
+            if ignored_regex(self.view, region):
                 continue
 
             problems.append(p)

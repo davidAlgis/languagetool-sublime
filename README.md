@@ -8,7 +8,7 @@ Here is a list of the features that has been added in this fork:
 - Messages have been clarified based on API limits.
 - Make possible to handle large text by splitting it chunk by chunk.
 - Words in the added_words list are now ignored during highlighting regardless of case.
-- Highlighting skips content inside $...$ or custom LaTeX functions (e.g., \function{...}) if ignored_tex_math is enabled.
+- Add the option "ignored_regex" to use regex to skip some patterns for highlighting.
 - We improved settings to be more consistent with "sublime text standard".
 
 #### Overview
