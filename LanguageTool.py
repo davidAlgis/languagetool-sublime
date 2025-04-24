@@ -410,10 +410,20 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
         ignored_scopes = settings.get("ignored-scopes")
         highlight_scope = settings.get("highlight-scope")
 
-        selection = self.view.sel()[0]
-        everything = sublime.Region(0, self.view.size())
+        # pick out the user’s selection (or whole file if none)
+        sels = list(self.view.sel())
+        if sels and not sels[0].empty():
+            sel = sels[0]
+            start, end = sel.begin(), sel.end()
+            whole_file = False
+        else:
+            start, end = 0, self.view.size()
+            whole_file = True
+
+        # clear selection so it doesn’t stay highlighted
         self.view.sel().clear()
-        check_region = everything if selection.empty() else selection
+
+        check_region = sublime.Region(start, end)
         check_text = self.view.substr(check_region)
         log(
             "Will check {} bytes ({} chars). Snippet: «{}»".format(
@@ -423,146 +433,92 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
             ),
             self.view,
         )
-        # 1) Check usage-limits or chunk-splitting
+
+        # 1) rate-limit / chunk logic
         result = check_api_limits(check_text)
         if isinstance(result, str):
-            # It's an error message
             set_status_bar(result)
             return
-        elif isinstance(result, dict) and "chunks" in result:
-            # Text is too large
+        if isinstance(result, dict) and "chunks" in result:
             prompt_user_for_chunks(self.view, result["chunks"])
             return
 
-        # 2) If all checks pass, record usage
-        text_size = len(check_text.encode("utf-8"))
-        REQUEST_TIMESTAMPS.append((time.time(), text_size))
+        # 2) record usage
+        REQUEST_TIMESTAMPS.append(
+            (time.time(), len(check_text.encode("utf-8")))
+        )
 
-        # 3) Clear existing problems
-        self.view.run_command("clear_language_problems")
+        # 3) clear old highlights, keep caret at `end`
+        self.view.run_command("clear_language_problems", {"caretPos": end})
 
-        # 4) Ask LanguageTool
+        # 4) ask LanguageTool
         language = self.view.settings().get("language_tool_language", "auto")
-        ignored_ids = [rule["id"] for rule in load_ignored_rules()]
-
+        ignored_ids = [r["id"] for r in load_ignored_rules()]
         matches = LTServer.getResponse(
             server_url, check_text, language, ignored_ids
         )
         if matches is None:
             set_status_bar(
-                "LanguageTool: could not parse server response (quota might be reached if using free API)."
+                "LanguageTool: could not parse server response (quota might be reached)."
             )
             return
 
-        # 5) Collect problems, respecting region offset
-        def get_region(problem):
-            length = problem["length"]
-            offset = problem["offset"]
-            return sublime.Region(offset, offset + length)
-
-        def inside(region):
-            return check_region.contains(region)
-
-        def is_ignored(problem):
-            scope_string = self.view.scope_name(problem["offset"])
-            scopes = scope_string.split()
-            if cross_match(scopes, ignored_scopes, fnmatch.fnmatch):
-                return True
-
-            # <-- NEW or CHANGED: skip if user dictionary has it
-            # We'll use problem['orgContent'] once we set it below
-            return False
-
-        relative_offsets = all(m["offset"] < len(check_text) for m in matches)
-        shift_value = check_region.a if relative_offsets else 0
-        shifter = lambda p: shift_offset(p, check_region.a)
-        get_problem = compose(shifter, parse_match)
-
+        # 5) collect + filter matches
         problems = []
-        log(
-            "Find {0} problems...".format(len(matches)),
-            self.view,
-        )
-        i = 0
-        for match in matches:
-            prob = get_problem(match)
+        for i, match in enumerate(matches):
+            prob = parse_match(match)
+            prob["offset"] += start
+            region = sublime.Region(
+                prob["offset"], prob["offset"] + prob["length"]
+            )
 
             log("Raw match: {}".format(match), self.view, truncate_at=500)
             log(
                 "Problem at {0}-{1} | «{2}» => {3}".format(
-                    prob["offset"],
-                    prob["offset"] + prob["length"],
-                    check_text[
-                        prob["offset"] : prob["offset"] + prob["length"]
-                    ],
+                    region.begin(),
+                    region.end(),
+                    self.view.substr(region),
                     prob["message"],
                 ),
                 self.view,
             )
-            region = get_region(prob)
-            if inside(region):
+
+            # only keep if whole-file mode, or the match lies inside [start,end)
+            if whole_file or (region.begin() >= start and region.end() <= end):
                 problems.append(prob)
             else:
-                log("Skip problem {0}".format(i), self.view, truncate_at=500)
-            i += 1
+                log("Skip problem {}".format(i), self.view, truncate_at=500)
 
-        # 6) Highlight problems
+        # 6) highlight the final set
         final_problems = []
-        for index, p in enumerate(problems):
+        for idx, p in enumerate(problems):
             region = sublime.Region(p["offset"], p["offset"] + p["length"])
             p["orgContent"] = self.view.substr(region)
 
-            # Check scope ignores:
-            scope_string = self.view.scope_name(p["offset"])
-            scopes = scope_string.split()
+            # skip ignored-scope
+            scopes = self.view.scope_name(p["offset"]).split()
             if cross_match(scopes, ignored_scopes, fnmatch.fnmatch):
-                log(
-                    "⤳ skipped «{0}» at {1}-{2}  (ignored scope: {3})".format(
-                        p["orgContent"],
-                        p["offset"],
-                        p["offset"] + p["length"],
-                        scope_string,
-                    ),
-                    self.view,
-                )
                 continue
-
+            # skip user-dictionary words
             if is_user_added_word(p["orgContent"]):
-                log(
-                    "⤳ skipped «{0}» at {1}-{2}  (user dictionary)".format(
-                        p["orgContent"], p["offset"], p["offset"] + p["length"]
-                    ),
-                    self.view,
-                )
+                continue
+            # skip if matches user-regex ignore
+            if ignored_regex(self.view, region):
                 continue
 
-            if ignored_regex(
-                self.view,
-                sublime.Region(p["offset"], p["offset"] + p["length"]),
-            ):
-                log(
-                    "⤳ skipped «{0}» at {1}-{2}  (matches ignored_regex)".format(
-                        p["orgContent"], p["offset"], p["offset"] + p["length"]
-                    ),
-                    self.view,
-                )
-                continue
-
-            p["regionKey"] = str(index)
+            key = str(idx)
+            p["regionKey"] = key
             self.view.add_regions(
-                str(index),
-                [region],
-                highlight_scope,
-                "",
-                sublime.DRAW_OUTLINED,
+                key, [region], highlight_scope, "", sublime.DRAW_OUTLINED
             )
             final_problems.append(p)
 
-        # 7) If any, select the first
+        # 7) jump to first, or show none
         if final_problems:
             select_problem(self.view, final_problems[0])
         else:
             set_status_bar("no language problems were found :-)")
+
         self.view.problems = final_problems
 
 
@@ -668,19 +624,20 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
 
 class clearLanguageProblemsCommand(sublime_plugin.TextCommand):
 
-    def run(self, edit):
+    def run(self, edit, caretPos=0):
         v = self.view
-        problems = v.__dict__.get("problems", [])
-        for p in problems:
+        # erase all old regions
+        for p in v.__dict__.get("problems", []):
             v.erase_regions(p["regionKey"])
-        problems = []
-        recompute_highlights(v)
-        caretPos = self.view.sel()[0].end()
+        # clear any selection/highlighting
         v.sel().clear()
+        recompute_highlights(v)
+        # restore caret
+        move_caret(v, caretPos, caretPos)
+        # hide output panel
         sublime.active_window().run_command(
             "hide_panel", {"panel": "output.languagetool"}
         )
-        move_caret(v, caretPos, caretPos)
 
 
 #########################
