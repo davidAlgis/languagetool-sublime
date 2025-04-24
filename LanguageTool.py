@@ -10,6 +10,7 @@ import itertools
 import os.path
 import re
 import subprocess
+import threading
 import time
 from collections import deque
 
@@ -405,42 +406,37 @@ def compose(f1, f2):
 class LanguageToolCommand(sublime_plugin.TextCommand):
 
     def run(self, edit, force_server=None):
-        settings = get_settings()
-        server_url = get_server_url(settings, force_server)
-        ignored_scopes = settings.get("ignored-scopes")
-        highlight_scope = settings.get("highlight-scope")
-
-        # pick out the user’s selection (or whole file if none)
+        # 1) figure out what region to check
         sels = list(self.view.sel())
         if sels and not sels[0].empty():
-            sel = sels[0]
-            start, end = sel.begin(), sel.end()
+            start, end = sels[0].begin(), sels[0].end()
             whole_file = False
         else:
             start, end = 0, self.view.size()
             whole_file = True
 
-        # clear selection so it doesn’t stay highlighted
-        self.view.sel().clear()
-
         check_region = sublime.Region(start, end)
         check_text = self.view.substr(check_region)
-        log(
-            "Will check {} bytes ({} chars). Snippet: «{}»".format(
-                len(check_text.encode("utf-8")),
-                len(check_text),
-                check_text.replace("\n", " ")[:120],
-            ),
-            self.view,
-        )
 
+        # 2) immediate UI feedback
+        sublime.status_message("LanguageTool: checking…")
+
+        # 3) spawn a thread to do all the heavy lifting
+        args = (check_text, start, end, whole_file, force_server)
+        threading.Thread(target=self._async_check, args=args).start()
+
+    def _async_check(self, check_text, start, end, whole_file, force_server):
+        # NOTE: this runs *off* the main thread
         # 1) rate-limit / chunk logic
         result = check_api_limits(check_text)
         if isinstance(result, str):
-            set_status_bar(result)
+            # error → back to UI thread to show it
+            sublime.set_timeout(lambda: sublime.status_message(result), 0)
             return
         if isinstance(result, dict) and "chunks" in result:
-            prompt_user_for_chunks(self.view, result["chunks"])
+            sublime.set_timeout(
+                lambda: prompt_user_for_chunks(self.view, result["chunks"]), 0
+            )
             return
 
         # 2) record usage
@@ -448,61 +444,55 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
             (time.time(), len(check_text.encode("utf-8")))
         )
 
-        # 3) clear old highlights, keep caret at `end`
-        self.view.run_command("clear_language_problems", {"caretPos": end})
-
-        # 4) ask LanguageTool
+        # 3) actually call LanguageTool
+        settings = get_settings()
+        server_url = get_server_url(settings, force_server)
         language = self.view.settings().get("language_tool_language", "auto")
         ignored_ids = [r["id"] for r in load_ignored_rules()]
         matches = LTServer.getResponse(
             server_url, check_text, language, ignored_ids
         )
+
+        # 4) hand back to the main thread for highlighting
+        sublime.set_timeout(
+            lambda: self._finish_check(matches, start, end, whole_file), 0
+        )
+
+    def _finish_check(self, matches, start, end, whole_file):
+        # this runs *on* the main thread
         if matches is None:
-            set_status_bar(
-                "LanguageTool: could not parse server response (quota might be reached)."
-            )
+            sublime.status_message("LanguageTool: server error or no response")
             return
 
-        # 5) collect + filter matches
+        sublime.status_message("LanguageTool: done")
+
+        # clear old problems & restore caret to `end`
+        self.view.run_command("clear_language_problems", {"caretPos": end})
+
+        # now exactly the same highlighting logic you already have, for each match:
+        settings = get_settings()
+        highlight_scope = settings.get("highlight-scope")
+        ignored_scopes = settings.get("ignored-scopes")
+
         problems = []
-        for i, match in enumerate(matches):
-            prob = parse_match(match)
-            prob["offset"] += start
-            region = sublime.Region(
-                prob["offset"], prob["offset"] + prob["length"]
-            )
-
-            log("Raw match: {}".format(match), self.view, truncate_at=500)
-            log(
-                "Problem at {0}-{1} | «{2}» => {3}".format(
-                    region.begin(),
-                    region.end(),
-                    self.view.substr(region),
-                    prob["message"],
-                ),
-                self.view,
-            )
-
-            # only keep if whole-file mode, or the match lies inside [start,end)
+        for m in matches:
+            p = parse_match(m)
+            p["offset"] += start
+            region = sublime.Region(p["offset"], p["offset"] + p["length"])
             if whole_file or (region.begin() >= start and region.end() <= end):
-                problems.append(prob)
-            else:
-                log("Skip problem {}".format(i), self.view, truncate_at=500)
+                problems.append(p)
 
-        # 6) highlight the final set
-        final_problems = []
+        final = []
         for idx, p in enumerate(problems):
             region = sublime.Region(p["offset"], p["offset"] + p["length"])
             p["orgContent"] = self.view.substr(region)
 
-            # skip ignored-scope
+            # skip by scope, user-dict or ignored_regex as before
             scopes = self.view.scope_name(p["offset"]).split()
             if cross_match(scopes, ignored_scopes, fnmatch.fnmatch):
                 continue
-            # skip user-dictionary words
             if is_user_added_word(p["orgContent"]):
                 continue
-            # skip if matches user-regex ignore
             if ignored_regex(self.view, region):
                 continue
 
@@ -511,15 +501,14 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
             self.view.add_regions(
                 key, [region], highlight_scope, "", sublime.DRAW_OUTLINED
             )
-            final_problems.append(p)
+            final.append(p)
 
-        # 7) jump to first, or show none
-        if final_problems:
-            select_problem(self.view, final_problems[0])
+        if final:
+            select_problem(self.view, final[0])
         else:
-            set_status_bar("no language problems were found :-)")
+            sublime.status_message("no language problems were found :-)")
 
-        self.view.problems = final_problems
+        self.view.problems = final
 
 
 #########################
