@@ -16,6 +16,7 @@ from collections import deque
 import sublime
 import sublime_plugin
 
+from .LanguageToolDebug import log
 from .settings import languageToolSettings
 
 #########################
@@ -411,9 +412,17 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
 
         selection = self.view.sel()[0]
         everything = sublime.Region(0, self.view.size())
+        self.view.sel().clear()
         check_region = everything if selection.empty() else selection
         check_text = self.view.substr(check_region)
-
+        log(
+            "Will check {} bytes ({} chars). Snippet: «{}»".format(
+                len(check_text.encode("utf-8")),
+                len(check_text),
+                check_text.replace("\n", " ")[:120],
+            ),
+            self.view,
+        )
         # 1) Check usage-limits or chunk-splitting
         result = check_api_limits(check_text)
         if isinstance(result, str):
@@ -464,15 +473,38 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
             # We'll use problem['orgContent'] once we set it below
             return False
 
+        relative_offsets = all(m["offset"] < len(check_text) for m in matches)
+        shift_value = check_region.a if relative_offsets else 0
         shifter = lambda p: shift_offset(p, check_region.a)
         get_problem = compose(shifter, parse_match)
 
         problems = []
+        log(
+            "Find {0} problems...".format(len(matches)),
+            self.view,
+        )
+        i = 0
         for match in matches:
             prob = get_problem(match)
+
+            log("Raw match: {}".format(match), self.view, truncate_at=500)
+            log(
+                "Problem at {0}-{1} | «{2}» => {3}".format(
+                    prob["offset"],
+                    prob["offset"] + prob["length"],
+                    check_text[
+                        prob["offset"] : prob["offset"] + prob["length"]
+                    ],
+                    prob["message"],
+                ),
+                self.view,
+            )
             region = get_region(prob)
             if inside(region):
                 problems.append(prob)
+            else:
+                log("Skip problem {0}".format(i), self.view, truncate_at=500)
+            i += 1
 
         # 6) Highlight problems
         final_problems = []
@@ -484,15 +516,36 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
             scope_string = self.view.scope_name(p["offset"])
             scopes = scope_string.split()
             if cross_match(scopes, ignored_scopes, fnmatch.fnmatch):
+                log(
+                    "⤳ skipped «{0}» at {1}-{2}  (ignored scope: {3})".format(
+                        p["orgContent"],
+                        p["offset"],
+                        p["offset"] + p["length"],
+                        scope_string,
+                    ),
+                    self.view,
+                )
                 continue
 
             if is_user_added_word(p["orgContent"]):
+                log(
+                    "⤳ skipped «{0}» at {1}-{2}  (user dictionary)".format(
+                        p["orgContent"], p["offset"], p["offset"] + p["length"]
+                    ),
+                    self.view,
+                )
                 continue
 
             if ignored_regex(
                 self.view,
                 sublime.Region(p["offset"], p["offset"] + p["length"]),
             ):
+                log(
+                    "⤳ skipped «{0}» at {1}-{2}  (matches ignored_regex)".format(
+                        p["orgContent"], p["offset"], p["offset"] + p["length"]
+                    ),
+                    self.view,
+                )
                 continue
 
             p["regionKey"] = str(index)

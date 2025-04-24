@@ -26,5 +26,6 @@
     // you can use "\\$[^$]*\\$" or to remove content between some 
     // specif macro like \macro{do_not_highlight} you can use
     // "\\\\[a-zA-Z]+\\{[^}]*\\}"
-    "ignored_regex": []
+    "ignored_regex": [],
+    "debug": false
 }
