@@ -5,15 +5,17 @@ This is a simple Sublime Text plugin for checking grammar. It passes buffer
 content to LanguageTool (via http) and highlights reported problems.
 """
 
-import sublime
-import sublime_plugin
-import subprocess
-import os.path
 import fnmatch
 import itertools
-import time
+import os.path
 import re
+import subprocess
+import time
 from collections import deque
+
+import sublime
+import sublime_plugin
+
 from .settings import languageToolSettings
 
 #########################
@@ -22,15 +24,14 @@ from .settings import languageToolSettings
 
 
 def _is_ST2():
-    return (int(sublime.version()) < 3000)
+    return int(sublime.version()) < 3000
 
 
 if _is_ST2():
-    import LTServer
     import LanguageList
+    import LTServer
 else:
-    from . import LTServer
-    from . import LanguageList
+    from . import LanguageList, LTServer
 
 #########################
 # USAGE LIMITS
@@ -115,7 +116,7 @@ def show_panel_text(text):
         pt.insert(edit, pt.size(), text)
         window.run_command("show_panel", {"panel": "output.languagetool"})
     else:
-        window.run_command('set_language_tool_panel_text', {'str': text})
+        window.run_command("set_language_tool_panel_text", {"str": text})
 
 
 class setLanguageToolPanelTextCommand(sublime_plugin.TextCommand):
@@ -126,7 +127,7 @@ class setLanguageToolPanelTextCommand(sublime_plugin.TextCommand):
         pt.settings().set("wrap_width", 0)
         pt.settings().set("word_wrap", True)
         pt.set_read_only(False)
-        pt.run_command('insert', {'characters': str})
+        pt.run_command("insert", {"characters": str})
         window.run_command("show_panel", {"panel": "output.languagetool"})
 
 
@@ -139,12 +140,12 @@ def chunk_text_by_bytes(full_text, max_bytes):
     """
     Split full_text into multiple pieces so that each piece
     is at most `max_bytes` in UTF-8 length.
-    
+
     Returns a list of (chunk_str, offset_in_chars), where:
       - chunk_str is the substring
       - offset_in_chars is how many characters into the *original* text this chunk starts
     """
-    encoded = full_text.encode('utf-8')
+    encoded = full_text.encode("utf-8")
     chunks = []
     start = 0
     # We'll keep track of how many characters we've accounted for so far
@@ -153,12 +154,12 @@ def chunk_text_by_bytes(full_text, max_bytes):
     while start < len(encoded):
         end = min(start + max_bytes, len(encoded))
         chunk_bytes = encoded[start:end]
-        chunk_str = chunk_bytes.decode('utf-8', errors='replace')
+        chunk_str = chunk_bytes.decode("utf-8", errors="replace")
 
         # offset_in_chars = number of characters in full_text[:start]
         # decode that slice (0..start) so we know how many characters that covers
         prior_bytes = encoded[:start]
-        prior_chars = prior_bytes.decode('utf-8', errors='replace')
+        prior_chars = prior_bytes.decode("utf-8", errors="replace")
         offset_in_chars = len(prior_chars)
 
         chunks.append((chunk_str, offset_in_chars))
@@ -174,7 +175,7 @@ def prompt_user_for_chunks(view, chunk_data_list):
     """
     chunk_previews = []
     for i, (chunk_str, offset_in_chars) in enumerate(chunk_data_list):
-        preview = chunk_str[:30].replace('\n', ' ')
+        preview = chunk_str[:30].replace("\n", " ")
         if len(chunk_str) > 30:
             preview += "..."
         chunk_previews.append(["Chunk " + str(i + 1), preview])
@@ -185,10 +186,10 @@ def prompt_user_for_chunks(view, chunk_data_list):
             return
         chosen_chunk_str, chosen_offset = chunk_data_list[index]
         # We run a separate command that checks just this chunk, with offset
-        view.run_command("language_tool_chunk_check", {
-            "chunk": chosen_chunk_str,
-            "offset_in_original": chosen_offset
-        })
+        view.run_command(
+            "language_tool_chunk_check",
+            {"chunk": chosen_chunk_str, "offset_in_original": chosen_offset},
+        )
 
     view.window().show_quick_panel(chunk_previews, on_done)
 
@@ -203,8 +204,8 @@ def get_settings():
 
 
 def get_server_url(settings, force_server):
-    server_setting = force_server or settings.get('default_server')
-    setting_name = 'languagetool_server_' + str(server_setting)
+    server_setting = force_server or settings.get("default_server")
+    setting_name = "languagetool_server_" + str(server_setting)
     server = settings.get(setting_name)
     return server
 
@@ -214,22 +215,22 @@ def cross_match(list1, list2, predicate):
 
 
 def load_ignored_rules():
-    ignored_rules_file = 'LanguageToolUser.sublime-settings'
+    ignored_rules_file = "LanguageToolUser.sublime-settings"
     settings = sublime.load_settings(ignored_rules_file)
-    return settings.get('ignored', [])
+    return settings.get("ignored", [])
 
 
 def save_ignored_rules(ignored):
-    ignored_rules_file = 'LanguageToolUser.sublime-settings'
+    ignored_rules_file = "LanguageToolUser.sublime-settings"
     settings = sublime.load_settings(ignored_rules_file)
-    settings.set('ignored', ignored)
+    settings.set("ignored", ignored)
     sublime.save_settings(ignored_rules_file)
 
 
 def check_api_limits(check_text):
     """
     Check if the current request exceeds any API limits.
-    
+
     Returns:
       None if everything is OK,
       a string if there's an error message to show,
@@ -237,12 +238,13 @@ def check_api_limits(check_text):
         if the text must be split into chunks.
     """
     current_requests, current_bytes = prune_usage_deque()
-    text_bytes = len(check_text.encode('utf-8'))
+    text_bytes = len(check_text.encode("utf-8"))
 
     # 1) single-request 20 KB limit
     if text_bytes > MAX_BYTES_PER_REQUEST:
-        chunk_data_list = chunk_text_by_bytes(check_text,
-                                              MAX_BYTES_PER_REQUEST - 1024)
+        chunk_data_list = chunk_text_by_bytes(
+            check_text, MAX_BYTES_PER_REQUEST - 1024
+        )
         return {"chunks": chunk_data_list}
 
     # 2) 75 KB per minute limit
@@ -294,14 +296,15 @@ def recompute_highlights(view):
     problems = view.__dict__.get("problems", {})
     hscope = get_settings().get("highlight-scope", "comment")
     for p in problems:
-        rL = view.get_regions(p['regionKey'])
+        rL = view.get_regions(p["regionKey"])
         if rL:
             if is_problem_solved(view, p):
                 regionScope = ""
             else:
                 regionScope = hscope
-            view.add_regions(p['regionKey'], rL, regionScope, "",
-                             sublime.DRAW_OUTLINED)
+            view.add_regions(
+                p["regionKey"], rL, regionScope, "", sublime.DRAW_OUTLINED
+            )
 
 
 #########################
@@ -310,7 +313,7 @@ def recompute_highlights(view):
 
 
 def select_problem(view, problem):
-    reg = view.get_regions(problem['regionKey'])[0]
+    reg = view.get_regions(problem["regionKey"])[0]
     move_caret(view, reg.a, reg.b)
     view.show_at_center(reg)
     show_problem(problem)
@@ -320,21 +323,21 @@ def show_problem(p):
     """
     Show problem description and suggestions (in panel or status bar).
     """
-    use_panel = get_settings().get('display_mode') == 'panel'
+    use_panel = get_settings().get("display_mode") == "panel"
 
     def show_problem_panel(p):
-        msg = p['message']
-        if p['replacements']:
-            msg += '\n\nSuggestion(s): ' + ', '.join(p['replacements'])
-        if p['urls']:
-            msg += '\n\nMore Info: ' + '\n'.join(p['urls'])
+        msg = p["message"]
+        if p["replacements"]:
+            msg += "\n\nSuggestion(s): " + ", ".join(p["replacements"])
+        if p["urls"]:
+            msg += "\n\nMore Info: " + "\n".join(p["urls"])
         show_panel_text(msg)
 
     def show_problem_status_bar(p):
-        if p['replacements']:
-            msg = p['message'] + " (" + ", ".join(p['replacements']) + ")"
+        if p["replacements"]:
+            msg = p["message"] + " (" + ", ".join(p["replacements"]) + ")"
         else:
-            msg = p['message']
+            msg = p["message"]
         set_status_bar(msg)
 
     if use_panel:
@@ -347,11 +350,11 @@ def is_problem_solved(view, problem):
     """
     A problem is resolved if region is empty or content changed.
     """
-    rl = view.get_regions(problem['regionKey'])
+    rl = view.get_regions(problem["regionKey"])
     if not rl:
         return True
     region = rl[0]
-    return region.empty() or (view.substr(region) != problem['orgContent'])
+    return region.empty() or (view.substr(region) != problem["orgContent"])
 
 
 #########################
@@ -364,13 +367,13 @@ def parse_match(match):
     Convert a LanguageTool match to a standard problem dict.
     """
     return {
-        'category': match['rule']['category']['name'],
-        'message': match['message'],
-        'replacements': [r['value'] for r in match['replacements']],
-        'rule': match['rule']['id'],
-        'urls': [w['value'] for w in match['rule'].get('urls', [])],
-        'offset': match['offset'],
-        'length': match['length']
+        "category": match["rule"]["category"]["name"],
+        "message": match["message"],
+        "replacements": [r["value"] for r in match["replacements"]],
+        "rule": match["rule"]["id"],
+        "urls": [w["value"] for w in match["rule"].get("urls", [])],
+        "offset": match["offset"],
+        "length": match["length"],
     }
 
 
@@ -378,7 +381,7 @@ def shift_offset(problem, shift):
     """
     Shift problem offset by `shift`.
     """
-    problem['offset'] += shift
+    problem["offset"] += shift
     return problem
 
 
@@ -403,8 +406,8 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
     def run(self, edit, force_server=None):
         settings = get_settings()
         server_url = get_server_url(settings, force_server)
-        ignored_scopes = settings.get('ignored-scopes')
-        highlight_scope = settings.get('highlight-scope')
+        ignored_scopes = settings.get("ignored-scopes")
+        highlight_scope = settings.get("highlight-scope")
 
         selection = self.view.sel()[0]
         everything = sublime.Region(0, self.view.size())
@@ -423,18 +426,19 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
             return
 
         # 2) If all checks pass, record usage
-        text_size = len(check_text.encode('utf-8'))
+        text_size = len(check_text.encode("utf-8"))
         REQUEST_TIMESTAMPS.append((time.time(), text_size))
 
         # 3) Clear existing problems
         self.view.run_command("clear_language_problems")
 
         # 4) Ask LanguageTool
-        language = self.view.settings().get('language_tool_language', 'auto')
-        ignored_ids = [rule['id'] for rule in load_ignored_rules()]
+        language = self.view.settings().get("language_tool_language", "auto")
+        ignored_ids = [rule["id"] for rule in load_ignored_rules()]
 
-        matches = LTServer.getResponse(server_url, check_text, language,
-                                       ignored_ids)
+        matches = LTServer.getResponse(
+            server_url, check_text, language, ignored_ids
+        )
         if matches is None:
             set_status_bar(
                 "LanguageTool: could not parse server response (quota might be reached if using free API)."
@@ -443,15 +447,15 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
 
         # 5) Collect problems, respecting region offset
         def get_region(problem):
-            length = problem['length']
-            offset = problem['offset']
+            length = problem["length"]
+            offset = problem["offset"]
             return sublime.Region(offset, offset + length)
 
         def inside(region):
             return check_region.contains(region)
 
         def is_ignored(problem):
-            scope_string = self.view.scope_name(problem['offset'])
+            scope_string = self.view.scope_name(problem["offset"])
             scopes = scope_string.split()
             if cross_match(scopes, ignored_scopes, fnmatch.fnmatch):
                 return True
@@ -473,26 +477,32 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
         # 6) Highlight problems
         final_problems = []
         for index, p in enumerate(problems):
-            region = sublime.Region(p['offset'], p['offset'] + p['length'])
-            p['orgContent'] = self.view.substr(region)
+            region = sublime.Region(p["offset"], p["offset"] + p["length"])
+            p["orgContent"] = self.view.substr(region)
 
             # Check scope ignores:
-            scope_string = self.view.scope_name(p['offset'])
+            scope_string = self.view.scope_name(p["offset"])
             scopes = scope_string.split()
             if cross_match(scopes, ignored_scopes, fnmatch.fnmatch):
                 continue
 
-            if is_user_added_word(p['orgContent']):
+            if is_user_added_word(p["orgContent"]):
                 continue
 
             if ignored_regex(
-                    self.view,
-                    sublime.Region(p['offset'], p['offset'] + p['length'])):
+                self.view,
+                sublime.Region(p["offset"], p["offset"] + p["length"]),
+            ):
                 continue
 
-            p['regionKey'] = str(index)
-            self.view.add_regions(str(index), [region], highlight_scope, "",
-                                  sublime.DRAW_OUTLINED)
+            p["regionKey"] = str(index)
+            self.view.add_regions(
+                str(index),
+                [region],
+                highlight_scope,
+                "",
+                sublime.DRAW_OUTLINED,
+            )
             final_problems.append(p)
 
         # 7) If any, select the first
@@ -510,7 +520,7 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
 
 class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
     """
-    Command to check just one chunk of text. 
+    Command to check just one chunk of text.
     Offsets are shifted by offset_in_original so they match the original file.
     """
 
@@ -526,7 +536,7 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
             return
 
         # 2) Record usage
-        chunk_size = len(chunk.encode('utf-8'))
+        chunk_size = len(chunk.encode("utf-8"))
         REQUEST_TIMESTAMPS.append((time.time(), chunk_size))
 
         # 3) Clear existing highlights
@@ -535,40 +545,41 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
         # 4) Send to LanguageTool
         settings = get_settings()
         server_url = get_server_url(settings, None)
-        language = self.view.settings().get('language_tool_language', 'auto')
-        ignored_ids = [rule['id'] for rule in load_ignored_rules()]
+        language = self.view.settings().get("language_tool_language", "auto")
+        ignored_ids = [rule["id"] for rule in load_ignored_rules()]
 
-        matches = LTServer.getResponse(server_url, chunk, language,
-                                       ignored_ids)
+        matches = LTServer.getResponse(
+            server_url, chunk, language, ignored_ids
+        )
         if matches is None:
             set_status_bar(
                 "LanguageTool: could not parse server response (quota might be reached)."
             )
             return
 
-        highlight_scope = settings.get('highlight-scope', 'comment')
-        ignored_scopes = settings.get('ignored-scopes')
+        highlight_scope = settings.get("highlight-scope", "comment")
+        ignored_scopes = settings.get("ignored-scopes")
         problems = []
 
         for i, match in enumerate(matches):
             p = parse_match(match)
-            p['offset'] += offset_in_original  # SHIFT
+            p["offset"] += offset_in_original  # SHIFT
 
             # We'll get the region
-            start = p['offset']
-            end = p['offset'] + p['length']
+            start = p["offset"]
+            end = p["offset"] + p["length"]
             region = sublime.Region(start, end)
 
-            p['orgContent'] = self.view.substr(region)
+            p["orgContent"] = self.view.substr(region)
 
             # Check scope ignores
-            scope_string = self.view.scope_name(p['offset'])
+            scope_string = self.view.scope_name(p["offset"])
             scopes = scope_string.split()
             if cross_match(scopes, ignored_scopes, fnmatch.fnmatch):
                 continue
 
             # Skip if in "added_words"
-            if is_user_added_word(p['orgContent']):
+            if is_user_added_word(p["orgContent"]):
                 continue
 
             # Skip if in math LaTeX content
@@ -580,10 +591,15 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
         # 5) Highlight them in the original buffer
         for index, p in enumerate(problems):
             region_key = "chunk-" + str(index)
-            region = sublime.Region(p['offset'], p['offset'] + p['length'])
-            self.view.add_regions(region_key, [region], highlight_scope, "",
-                                  sublime.DRAW_OUTLINED)
-            p['regionKey'] = region_key
+            region = sublime.Region(p["offset"], p["offset"] + p["length"])
+            self.view.add_regions(
+                region_key,
+                [region],
+                highlight_scope,
+                "",
+                sublime.DRAW_OUTLINED,
+            )
+            p["regionKey"] = region_key
 
         if problems:
             select_problem(self.view, problems[0])
@@ -603,13 +619,14 @@ class clearLanguageProblemsCommand(sublime_plugin.TextCommand):
         v = self.view
         problems = v.__dict__.get("problems", [])
         for p in problems:
-            v.erase_regions(p['regionKey'])
+            v.erase_regions(p["regionKey"])
         problems = []
         recompute_highlights(v)
         caretPos = self.view.sel()[0].end()
         v.sel().clear()
-        sublime.active_window().run_command("hide_panel",
-                                            {"panel": "output.languagetool"})
+        sublime.active_window().run_command(
+            "hide_panel", {"panel": "output.languagetool"}
+        )
         move_caret(v, caretPos, caretPos)
 
 
@@ -627,19 +644,20 @@ class gotoNextLanguageProblemCommand(sublime_plugin.TextCommand):
             sel = v.sel()[0]
             if jump_forward:
                 for p in problems:
-                    r = v.get_regions(p['regionKey'])[0]
+                    r = v.get_regions(p["regionKey"])[0]
                     if (not is_problem_solved(v, p)) and (sel.begin() < r.a):
                         select_problem(v, p)
                         return
             else:
                 for p in reversed(problems):
-                    r = v.get_regions(p['regionKey'])[0]
+                    r = v.get_regions(p["regionKey"])[0]
                     if (not is_problem_solved(v, p)) and (r.a < sel.begin()):
                         select_problem(v, p)
                         return
         set_status_bar("no further language problems to fix")
-        sublime.active_window().run_command("hide_panel",
-                                            {"panel": "output.languagetool"})
+        sublime.active_window().run_command(
+            "hide_panel", {"panel": "output.languagetool"}
+        )
 
 
 #########################
@@ -650,37 +668,46 @@ class gotoNextLanguageProblemCommand(sublime_plugin.TextCommand):
 class startLanguageToolServerCommand(sublime_plugin.TextCommand):
 
     def run(self, edit):
-        jar_path = get_settings().get('languagetool_jar')
+        jar_path = get_settings().get("languagetool_jar")
         if not jar_path:
             show_panel_text("Setting languagetool_jar is undefined")
             return
 
         if not os.path.isfile(jar_path):
             show_panel_text(
-                'Error, could not find LanguageTool\'s JAR file (%s)\n\n'
-                'Please install LT in this directory or modify the `languagetool_jar` setting.'
-                % jar_path)
+                "Error, could not find LanguageTool's JAR file (%s)\n\n"
+                "Please install LT in this directory or modify the `languagetool_jar` setting."
+                % jar_path
+            )
             return
 
-        sublime.status_message('Starting local LanguageTool server ...')
+        sublime.status_message("Starting local LanguageTool server ...")
         cmd = [
-            'java', '-cp', jar_path, 'org.languagetool.server.HTTPServer',
-            '--port', '8081'
+            "java",
+            "-cp",
+            jar_path,
+            "org.languagetool.server.HTTPServer",
+            "--port",
+            "8081",
         ]
 
         if sublime.platform() == "windows":
             # Hide console window on Windows
-            subprocess.Popen(cmd,
-                             stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE,
-                             shell=True,
-                             creationflags=subprocess.SW_HIDE)
+            subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                shell=True,
+                creationflags=subprocess.SW_HIDE,
+            )
         else:
-            subprocess.Popen(cmd,
-                             stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE)
+            subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
 
 
 #########################
@@ -698,7 +725,7 @@ class changeLanguageToolLanguageCommand(sublime_plugin.TextCommand):
 
 
 def handle_language_selection(ind, view):
-    key = 'language_tool_language'
+    key = "language_tool_language"
     if ind == 0:
         view.settings().erase(key)
     else:
@@ -719,16 +746,16 @@ class markLanguageProblemSolvedCommand(sublime_plugin.TextCommand):
         selected_region = v.sel()[0]
 
         for problem in problems:
-            regions = v.get_regions(problem['regionKey'])
+            regions = v.get_regions(problem["regionKey"])
             if regions and regions[0] == selected_region:
                 # Found the problem that matches selection
                 break
         else:
-            set_status_bar('no language problem selected')
+            set_status_bar("no language problem selected")
             return
 
         next_caret_pos = regions[0].a
-        replacements = problem['replacements']
+        replacements = problem["replacements"]
 
         if apply_fix and replacements:
             correct_problem(self.view, edit, problem, replacements)
@@ -744,7 +771,7 @@ class markLanguageProblemSolvedCommand(sublime_plugin.TextCommand):
 def correct_problem(view, edit, problem, replacements):
 
     def clear_and_advance():
-        clear_region(view, problem['regionKey'])
+        clear_region(view, problem["regionKey"])
         move_caret(view, next_caret_pos, next_caret_pos)
         view.run_command("goto_next_language_problem")
 
@@ -758,7 +785,7 @@ def correct_problem(view, edit, problem, replacements):
 
         view.window().show_quick_panel(replacements, callback_fun)
     else:
-        region = view.get_regions(problem['regionKey'])[0]
+        region = view.get_regions(problem["regionKey"])[0]
         view.replace(edit, region, replacements[0])
         next_caret_pos = region.a + len(replacements[0])
         clear_and_advance()
@@ -766,8 +793,8 @@ def correct_problem(view, edit, problem, replacements):
 
 def choose_suggestion(view, p, replacements, choice):
     if choice != -1:
-        r = view.get_regions(p['regionKey'])[0]
-        view.run_command('insert', {'characters': replacements[choice]})
+        r = view.get_regions(p["regionKey"])[0]
+        view.run_command("insert", {"characters": replacements[choice]})
         c = r.a + len(replacements[choice])
         move_caret(view, c, c)
         view.run_command("goto_next_language_problem")
@@ -778,8 +805,8 @@ def choose_suggestion(view, p, replacements, choice):
 def get_equal_problems(problems, x):
 
     def is_equal(prob1, prob2):
-        same_category = prob1['category'] == prob2['category']
-        same_content = prob1['orgContent'] == prob2['orgContent']
+        same_category = prob1["category"] == prob2["category"]
+        same_content = prob1["orgContent"] == prob2["orgContent"]
         return same_category and same_content
 
     return [p for p in problems if is_equal(p, x)]
@@ -792,12 +819,13 @@ def clear_region(view, region_key):
         hscope = get_settings().get("highlight-scope", "comment")
         # Move the region to zero length so it doesn't highlight
         dummy = sublime.Region(region.a, region.a)
-        view.add_regions(region_key, [dummy], hscope, "",
-                         sublime.DRAW_OUTLINED)
+        view.add_regions(
+            region_key, [dummy], hscope, "", sublime.DRAW_OUTLINED
+        )
 
 
 def ignore_problem(problem, v, edit):
-    clear_region(v, problem['regionKey'])
+    clear_region(v, problem["regionKey"])
     # dummy insert to allow undo
     v.insert(edit, v.size(), "")
 
@@ -816,28 +844,28 @@ class DeactivateRuleCommand(sublime_plugin.TextCommand):
         sel = v.sel()[0]
         selected = []
         for p in problems:
-            regs = v.get_regions(p['regionKey'])
+            regs = v.get_regions(p["regionKey"])
             if regs and sel.contains(regs[0]):
                 selected.append(p)
 
         if not selected:
-            set_status_bar('select a problem to deactivate its rule')
+            set_status_bar("select a problem to deactivate its rule")
         elif len(selected) == 1:
             rule = {
-                "id": selected[0]['rule'],
-                "description": selected[0]['message']
+                "id": selected[0]["rule"],
+                "description": selected[0]["message"],
             }
             ignored.append(rule)
-            ignoredProblems = [p for p in problems if p['rule'] == rule['id']]
+            ignoredProblems = [p for p in problems if p["rule"] == rule["id"]]
             for p in ignoredProblems:
                 ignore_problem(p, v, edit)
-            problems = [p for p in problems if p['rule'] != rule['id']]
+            problems = [p for p in problems if p["rule"] != rule["id"]]
             v.run_command("goto_next_language_problem")
             save_ignored_rules(ignored)
-            set_status_bar('deactivated rule ' + str(rule))
+            set_status_bar("deactivated rule " + str(rule))
         else:
             set_status_bar(
-                'there are multiple selected problems; select only one to deactivate'
+                "there are multiple selected problems; select only one to deactivate"
             )
 
 
@@ -847,11 +875,12 @@ class ActivateRuleCommand(sublime_plugin.TextCommand):
         ignored = load_ignored_rules()
         if ignored:
             activate_callback_wrapper = lambda i: self.activate_callback(i)
-            ruleList = [[rule['id'], rule['description']] for rule in ignored]
-            self.view.window().show_quick_panel(ruleList,
-                                                activate_callback_wrapper)
+            ruleList = [[rule["id"], rule["description"]] for rule in ignored]
+            self.view.window().show_quick_panel(
+                ruleList, activate_callback_wrapper
+            )
         else:
-            set_status_bar('there are no ignored rules')
+            set_status_bar("there are no ignored rules")
 
     def activate_callback(self, i):
         ignored = load_ignored_rules()
@@ -859,4 +888,4 @@ class ActivateRuleCommand(sublime_plugin.TextCommand):
             activate_rule = ignored[i]
             ignored.remove(activate_rule)
             save_ignored_rules(ignored)
-            set_status_bar('activated rule ' + str(activate_rule['id']))
+            set_status_bar("activated rule " + str(activate_rule["id"]))
