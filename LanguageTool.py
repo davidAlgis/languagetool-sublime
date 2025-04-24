@@ -245,7 +245,7 @@ def check_api_limits(check_text):
     # 1) single-request 20 KB limit
     if text_bytes > MAX_BYTES_PER_REQUEST:
         chunk_data_list = chunk_text_by_bytes(
-            check_text, MAX_BYTES_PER_REQUEST - 1024
+            check_text, MAX_BYTES_PER_REQUEST - 8192
         )
         return {"chunks": chunk_data_list}
 
