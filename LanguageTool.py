@@ -517,93 +517,114 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
 
 
 class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
-    """
-    Command to check just one chunk of text.
-    Offsets are shifted by offset_in_original so they match the original file.
-    """
 
     def run(self, edit, chunk, offset_in_original=0):
-        # 1) Check usage-limits for chunk
+        # 1) immediate feedback
+        set_status_bar("LanguageTool: checking chunk…")
+        log(
+            "LanguageToolChunkCheck: chunk length (bytes) = {}".format(
+                len(chunk.encode("utf-8"))
+            ),
+            self.view,
+        )
+
+        # 2) spawn background thread
+        threading.Thread(
+            target=self._async_chunk_check, args=(chunk, offset_in_original)
+        ).start()
+
+    def _async_chunk_check(self, chunk, offset_in_original):
+        # off the UI thread now
         result = check_api_limits(chunk)
+        log(
+            "LanguageToolChunkCheck: check_api_limits returned {!r}".format(
+                result
+            ),
+            self.view,
+        )
+
         if isinstance(result, str):
-            set_status_bar(result)
-            return
-        elif isinstance(result, dict) and "chunks" in result:
-            # Theoretically shouldn't happen if chunk <= 20KB
-            prompt_user_for_chunks(self.view, result["chunks"])
+            sublime.set_timeout(lambda: set_status_bar(result), 0)
             return
 
-        # 2) Record usage
-        chunk_size = len(chunk.encode("utf-8"))
-        REQUEST_TIMESTAMPS.append((time.time(), chunk_size))
+        if isinstance(result, dict) and "chunks" in result:
+            sublime.set_timeout(
+                lambda: prompt_user_for_chunks(self.view, result["chunks"]), 0
+            )
+            return
 
-        # 3) Clear existing highlights
-        self.view.run_command("clear_language_problems")
+        REQUEST_TIMESTAMPS.append((time.time(), len(chunk.encode("utf-8"))))
 
-        # 4) Send to LanguageTool
         settings = get_settings()
         server_url = get_server_url(settings, None)
         language = self.view.settings().get("language_tool_language", "auto")
-        ignored_ids = [rule["id"] for rule in load_ignored_rules()]
+        ignored_ids = [r["id"] for r in load_ignored_rules()]
+
+        log(
+            "LanguageToolChunkCheck: sending to server {}".format(server_url),
+            self.view,
+        )
 
         matches = LTServer.getResponse(
             server_url, chunk, language, ignored_ids
         )
+        log(
+            "LanguageToolChunkCheck: LTServer.getResponse returned {!r}".format(
+                matches
+            ),
+            self.view,
+        )
+
+        # back to UI thread to finish
+        sublime.set_timeout(
+            lambda: self._finish_chunk_check(matches, offset_in_original), 0
+        )
+
+    def _finish_chunk_check(self, matches, offset_in_original):
         if matches is None:
-            set_status_bar(
-                "LanguageTool: could not parse server response (quota might be reached)."
-            )
+            set_status_bar("LanguageTool: server error or no response")
             return
 
+        set_status_bar("LanguageTool: chunk done")
+
+        # clear old highlights & restore caret
+        self.view.run_command(
+            "clear_language_problems", {"caretPos": offset_in_original}
+        )
+
+        settings = get_settings()
         highlight_scope = settings.get("highlight-scope", "comment")
         ignored_scopes = settings.get("ignored-scopes")
-        problems = []
+        final = []
 
-        for i, match in enumerate(matches):
-            p = parse_match(match)
-            p["offset"] += offset_in_original  # SHIFT
-
-            # We'll get the region
-            start = p["offset"]
-            end = p["offset"] + p["length"]
-            region = sublime.Region(start, end)
-
+        for i, m in enumerate(matches):
+            p = parse_match(m)
+            p["offset"] += offset_in_original
+            region = sublime.Region(p["offset"], p["offset"] + p["length"])
             p["orgContent"] = self.view.substr(region)
 
-            # Check scope ignores
-            scope_string = self.view.scope_name(p["offset"])
-            scopes = scope_string.split()
+            # skip ignored-scope, user-dict, regex-ignores
+            scopes = self.view.scope_name(p["offset"]).split()
             if cross_match(scopes, ignored_scopes, fnmatch.fnmatch):
                 continue
-
-            # Skip if in "added_words"
             if is_user_added_word(p["orgContent"]):
                 continue
-
-            # Skip if in math LaTeX content
             if ignored_regex(self.view, region):
                 continue
 
-            problems.append(p)
-
-        # 5) Highlight them in the original buffer
-        for index, p in enumerate(problems):
-            region_key = "chunk-" + str(index)
-            region = sublime.Region(p["offset"], p["offset"] + p["length"])
+            key = "chunk-" + str(i)
+            p["regionKey"] = key
             self.view.add_regions(
-                region_key,
-                [region],
-                highlight_scope,
-                "",
-                sublime.DRAW_OUTLINED,
+                key, [region], highlight_scope, "", sublime.DRAW_OUTLINED
             )
-            p["regionKey"] = region_key
+            final.append(p)
 
-        if problems:
-            select_problem(self.view, problems[0])
+        if final:
+            select_problem(self.view, final[0])
         else:
             set_status_bar("no language problems were found in this chunk :-)")
-        self.view.problems = problems
+
+        self.view.problems = final
 
 
 #########################
