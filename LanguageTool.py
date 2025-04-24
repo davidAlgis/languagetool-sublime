@@ -6,7 +6,6 @@ content to LanguageTool (via http) and highlights reported problems.
 """
 
 import fnmatch
-import itertools
 import os.path
 import re
 import subprocess
@@ -46,7 +45,10 @@ MAX_BYTES_PER_REQUEST = 20 * 1024  # 20KB
 
 
 def prune_usage_deque():
-    """Remove entries older than 60 seconds; return (current_request_count, current_byte_sum)."""
+    """
+    Remove entries older than 60 seconds;
+    return (current_request_count, current_byte_sum).
+    """
     now = time.time()
     while REQUEST_TIMESTAMPS and (now - REQUEST_TIMESTAMPS[0][0] > 60):
         REQUEST_TIMESTAMPS.popleft()
@@ -60,7 +62,8 @@ def prune_usage_deque():
 #########################
 def ignored_regex(view, region):
     """
-    Checks if a given region matches any user-defined regex patterns to be ignored.
+    Checks if a given region matches
+    any user-defined regex patterns to be ignored.
     Args:
         view (sublime.View): The current view.
         region (sublime.Region): The region to check.
@@ -145,13 +148,15 @@ def chunk_text_by_bytes(full_text, max_bytes):
 
     Returns a list of (chunk_str, offset_in_chars), where:
       - chunk_str is the substring
-      - offset_in_chars is how many characters into the *original* text this chunk starts
+      - offset_in_chars is how many characters
+      into the *original* text this chunk starts
     """
     encoded = full_text.encode("utf-8")
     chunks = []
     start = 0
     # We'll keep track of how many characters we've accounted for so far
-    # by decoding from 0..start each time. This is naive but works for many cases.
+    # by decoding from 0..start each time.
+    # This is naive but works for many cases.
 
     while start < len(encoded):
         end = min(start + max_bytes, len(encoded))
@@ -159,7 +164,8 @@ def chunk_text_by_bytes(full_text, max_bytes):
         chunk_str = chunk_bytes.decode("utf-8", errors="replace")
 
         # offset_in_chars = number of characters in full_text[:start]
-        # decode that slice (0..start) so we know how many characters that covers
+        # decode that slice (0..start) so we know
+        #  how many characters that covers
         prior_bytes = encoded[:start]
         prior_chars = prior_bytes.decode("utf-8", errors="replace")
         offset_in_chars = len(prior_chars)
@@ -251,11 +257,13 @@ def check_api_limits(check_text):
 
     # 2) 75 KB per minute limit
     if current_bytes + text_bytes > MAX_BYTES_PER_MINUTE:
-        return "LanguageTool: You have reached the 75KB per minute limit; please wait."
+        return "LanguageTool: You have reached the "
+        "75KB per minute limit; please wait."
 
     # 3) 20 requests per minute
     if current_requests >= MAX_REQUESTS_PER_MINUTE:
-        return "LanguageTool: You have reached 20 requests per minute limit; please wait."
+        return "LanguageTool: You have reached 20 "
+        "requests per minute limit; please wait."
 
     return None
 
@@ -469,7 +477,8 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
         # clear old problems & restore caret to `end`
         self.view.run_command("clear_language_problems", {"caretPos": end})
 
-        # now exactly the same highlighting logic you already have, for each match:
+        # now exactly the same highlighting
+        # logic you already have, for each match:
         settings = get_settings()
         highlight_scope = settings.get("highlight-scope")
         ignored_scopes = settings.get("ignored-scopes")
@@ -696,8 +705,8 @@ class startLanguageToolServerCommand(sublime_plugin.TextCommand):
         if not os.path.isfile(jar_path):
             show_panel_text(
                 "Error, could not find LanguageTool's JAR file (%s)\n\n"
-                "Please install LT in this directory or modify the `languagetool_jar` setting."
-                % jar_path
+                "Please install LT in this directory or "
+                "modify the `languagetool_jar` setting." % jar_path
             )
             return
 
@@ -885,7 +894,8 @@ class DeactivateRuleCommand(sublime_plugin.TextCommand):
             set_status_bar("deactivated rule " + str(rule))
         else:
             set_status_bar(
-                "there are multiple selected problems; select only one to deactivate"
+                "there are multiple selected problems;"
+                " select only one to deactivate"
             )
 
 
