@@ -528,8 +528,10 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
 class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
 
     def run(self, edit, chunk, offset_in_original=0):
-        # 1) immediate feedback
-        set_status_bar("LanguageTool: checking chunk…")
+        # 1) persistent “loading” status
+        self.view.set_status(
+            "languagetool_chunk", "LanguageTool: checking chunk…"
+        )
         log(
             "LanguageToolChunkCheck: chunk length (bytes) = {}".format(
                 len(chunk.encode("utf-8"))
@@ -537,13 +539,12 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
             self.view,
         )
 
-        # 2) spawn background thread
+        # 2) background work
         threading.Thread(
             target=self._async_chunk_check, args=(chunk, offset_in_original)
         ).start()
 
     def _async_chunk_check(self, chunk, offset_in_original):
-        # off the UI thread now
         result = check_api_limits(chunk)
         log(
             "LanguageToolChunkCheck: check_api_limits returned {!r}".format(
@@ -551,11 +552,9 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
             ),
             self.view,
         )
-
         if isinstance(result, str):
-            sublime.set_timeout(lambda: set_status_bar(result), 0)
+            sublime.set_timeout(lambda: self._on_error(result), 0)
             return
-
         if isinstance(result, dict) and "chunks" in result:
             sublime.set_timeout(
                 lambda: prompt_user_for_chunks(self.view, result["chunks"]), 0
@@ -563,12 +562,10 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
             return
 
         REQUEST_TIMESTAMPS.append((time.time(), len(chunk.encode("utf-8"))))
-
         settings = get_settings()
         server_url = get_server_url(settings, None)
         language = self.view.settings().get("language_tool_language", "auto")
         ignored_ids = [r["id"] for r in load_ignored_rules()]
-
         log(
             "LanguageToolChunkCheck: sending to server {}".format(server_url),
             self.view,
@@ -584,19 +581,26 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
             self.view,
         )
 
-        # back to UI thread to finish
         sublime.set_timeout(
             lambda: self._finish_chunk_check(matches, offset_in_original), 0
         )
 
+    def _on_error(self, message):
+        # clear the loading status, show error briefly
+        self.view.erase_status("languagetool_chunk")
+        set_status_bar(message)
+
     def _finish_chunk_check(self, matches, offset_in_original):
+        # remove the “checking…” status
+        self.view.erase_status("languagetool_chunk")
+
         if matches is None:
             set_status_bar("LanguageTool: server error or no response")
             return
 
         set_status_bar("LanguageTool: chunk done")
 
-        # clear old highlights & restore caret
+        # clear & restore caret
         self.view.run_command(
             "clear_language_problems", {"caretPos": offset_in_original}
         )
@@ -604,15 +608,14 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
         settings = get_settings()
         highlight_scope = settings.get("highlight-scope", "comment")
         ignored_scopes = settings.get("ignored-scopes")
-        final = []
 
+        final = []
         for i, m in enumerate(matches):
             p = parse_match(m)
             p["offset"] += offset_in_original
             region = sublime.Region(p["offset"], p["offset"] + p["length"])
             p["orgContent"] = self.view.substr(region)
 
-            # skip ignored-scope, user-dict, regex-ignores
             scopes = self.view.scope_name(p["offset"]).split()
             if cross_match(scopes, ignored_scopes, fnmatch.fnmatch):
                 continue
