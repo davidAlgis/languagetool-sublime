@@ -457,9 +457,21 @@ class LanguageToolCommand(sublime_plugin.TextCommand):
         server_url = get_server_url(settings, force_server)
         language = self.view.settings().get("language_tool_language", "auto")
         ignored_ids = [r["id"] for r in load_ignored_rules()]
-        matches = LTServer.getResponse(
-            server_url, check_text, language, ignored_ids
-        )
+
+        try:
+            matches = LTServer.getResponse(
+                server_url, check_text, language, ignored_ids
+            )
+        except Exception as e:
+            # If an exception occurs, display a more detailed error message
+            error_message = (
+                "LanguageTool: server error or no response. Exception: "
+                + str(e)
+            )
+            sublime.set_timeout(
+                lambda: sublime.status_message(error_message), 0
+            )
+            return
 
         # 4) hand back to the main thread for highlighting
         sublime.set_timeout(
@@ -571,15 +583,42 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
             self.view,
         )
 
-        matches = LTServer.getResponse(
-            server_url, chunk, language, ignored_ids
-        )
-        log(
-            "LanguageToolChunkCheck: LTServer.getResponse returned {!r}".format(
-                matches
-            ),
-            self.view,
-        )
+        try:
+            # Log the request details
+            log(
+                "LanguageToolChunkCheck: Request body: {}".format(chunk),
+                self.view,
+            )
+
+            # Sending the request to the server
+            matches = LTServer.getResponse(
+                server_url, chunk, language, ignored_ids
+            )
+
+            if matches is None:
+                log(
+                    "LanguageToolChunkCheck: No response from server",
+                    self.view,
+                )
+                raise Exception(
+                    "No response received from the LanguageTool server."
+                )
+
+            # Log the response
+            log(
+                "LanguageToolChunkCheck: LTServer.getResponse returned matches: {!r}".format(
+                    matches
+                ),
+                self.view,
+            )
+        except Exception as e:
+            # If an exception occurs, display a more detailed error message
+            error_message = (
+                "LanguageTool: server error or no response. Exception: "
+                + str(e)
+            )
+            sublime.set_timeout(lambda: self._on_error(error_message), 0)
+            return
 
         sublime.set_timeout(
             lambda: self._finish_chunk_check(matches, offset_in_original), 0
