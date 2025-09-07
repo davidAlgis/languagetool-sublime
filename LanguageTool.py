@@ -41,7 +41,9 @@ else:
 REQUEST_TIMESTAMPS = deque()  # queue of (timestamp, text_size)
 MAX_REQUESTS_PER_MINUTE = 20
 MAX_BYTES_PER_MINUTE = 75 * 1024  # 75KB
-MAX_BYTES_PER_REQUEST = 20 * 1024  # 20KB
+MAX_BYTES_PER_REQUEST = (
+    16 * 1024
+)  # was 20 * 1024; effective chunk ~8KB due to -8192 margin
 
 
 def prune_usage_deque():
@@ -203,11 +205,10 @@ def prompt_user_for_chunks(view, chunk_data_list):
     def on_done(index):
         if index == -1:
             set_status_bar_and_log(
-                "LanguageTool: chunk selection cancelled.", self.view
-            )
+                "LanguageTool: chunk selection cancelled.", view
+            )  # fixed: use view
             return
         chosen_chunk_str, chosen_offset = chunk_data_list[index]
-        # We run a separate command that checks just this chunk, with offset
         view.run_command(
             "language_tool_chunk_check",
             {"chunk": chosen_chunk_str, "offset_in_original": chosen_offset},
@@ -961,9 +962,10 @@ class DeactivateRuleCommand(sublime_plugin.TextCommand):
             save_ignored_rules(ignored)
             set_status_bar_and_log("deactivated rule " + str(rule), self.view)
         else:
-            set_status_bar_and_log, self.view(
-                "there are multiple selected problems;"
-                " select only one to deactivate"
+            # fixed: remove stray comma and call correctly
+            set_status_bar_and_log(
+                "there are multiple selected problems; select only one to deactivate",
+                self.view,
             )
 
 
