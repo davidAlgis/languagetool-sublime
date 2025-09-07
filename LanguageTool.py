@@ -102,8 +102,20 @@ def ignored_regex(view, region):
     return False
 
 
-def set_status_bar(message):
+def set_status_bar_and_log(message, view=None):
+    """
+    Show a message in the Sublime status bar and also log it to the console.
+    """
     sublime.status_message(message)
+    try:
+        from .LanguageToolDebug import log
+
+        if view is not None:
+            log(message, view)
+        else:
+            print("[LanguageTool]", message)
+    except Exception:
+        print("[LanguageTool]", message)
 
 
 def move_caret(view, i, j):
@@ -190,7 +202,9 @@ def prompt_user_for_chunks(view, chunk_data_list):
 
     def on_done(index):
         if index == -1:
-            set_status_bar("LanguageTool: chunk selection cancelled.")
+            set_status_bar_and_log(
+                "LanguageTool: chunk selection cancelled.", self.view
+            )
             return
         chosen_chunk_str, chosen_offset = chunk_data_list[index]
         # We run a separate command that checks just this chunk, with offset
@@ -257,13 +271,17 @@ def check_api_limits(check_text):
 
     # 2) 75 KB per minute limit
     if current_bytes + text_bytes > MAX_BYTES_PER_MINUTE:
-        return "LanguageTool: You have reached the "
-        "75KB per minute limit; please wait."
+        return (
+            "LanguageTool: You have reached the "
+            "75KB per minute limit; please wait."
+        )
 
     # 3) 20 requests per minute
     if current_requests >= MAX_REQUESTS_PER_MINUTE:
-        return "LanguageTool: You have reached 20 "
-        "requests per minute limit; please wait."
+        return (
+            "LanguageTool: You have reached 20 "
+            "requests per minute limit; please wait."
+        )
 
     return None
 
@@ -348,7 +366,7 @@ def show_problem(p):
             msg = p["message"] + " (" + ", ".join(p["replacements"]) + ")"
         else:
             msg = p["message"]
-        set_status_bar(msg)
+        set_status_bar_and_log(msg, self.view)
 
     if use_panel:
         show_problem_panel(p)
@@ -627,17 +645,19 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
     def _on_error(self, message):
         # clear the loading status, show error briefly
         self.view.erase_status("languagetool_chunk")
-        set_status_bar(message)
+        set_status_bar_and_log(message, self.view)
 
     def _finish_chunk_check(self, matches, offset_in_original):
         # remove the “checking…” status
         self.view.erase_status("languagetool_chunk")
 
         if matches is None:
-            set_status_bar("LanguageTool: server error or no response")
+            set_status_bar_and_log(
+                "LanguageTool: server error or no response", self.view
+            )
             return
 
-        set_status_bar("LanguageTool: chunk done")
+        set_status_bar_and_log("LanguageTool: chunk done", self.view)
 
         # clear & restore caret
         self.view.run_command(
@@ -673,7 +693,9 @@ class LanguageToolChunkCheckCommand(sublime_plugin.TextCommand):
         if final:
             select_problem(self.view, final[0])
         else:
-            set_status_bar("no language problems were found in this chunk :-)")
+            set_status_bar_and_log(
+                "no language problems were found in this chunk :-)", self.view
+            )
 
         self.view.problems = final
 
@@ -725,7 +747,9 @@ class gotoNextLanguageProblemCommand(sublime_plugin.TextCommand):
                     if (not is_problem_solved(v, p)) and (r.a < sel.begin()):
                         select_problem(v, p)
                         return
-        set_status_bar("no further language problems to fix")
+        set_status_bar_and_log(
+            "no further language problems to fix", self.view
+        )
         sublime.active_window().run_command(
             "hide_panel", {"panel": "output.languagetool"}
         )
@@ -822,7 +846,7 @@ class markLanguageProblemSolvedCommand(sublime_plugin.TextCommand):
                 # Found the problem that matches selection
                 break
         else:
-            set_status_bar("no language problem selected")
+            set_status_bar_and_log("no language problem selected", self.view)
             return
 
         next_caret_pos = regions[0].a
@@ -920,7 +944,9 @@ class DeactivateRuleCommand(sublime_plugin.TextCommand):
                 selected.append(p)
 
         if not selected:
-            set_status_bar("select a problem to deactivate its rule")
+            set_status_bar_and_log(
+                "select a problem to deactivate its rule", self.view
+            )
         elif len(selected) == 1:
             rule = {
                 "id": selected[0]["rule"],
@@ -933,9 +959,9 @@ class DeactivateRuleCommand(sublime_plugin.TextCommand):
             problems = [p for p in problems if p["rule"] != rule["id"]]
             v.run_command("goto_next_language_problem")
             save_ignored_rules(ignored)
-            set_status_bar("deactivated rule " + str(rule))
+            set_status_bar_and_log("deactivated rule " + str(rule), self.view)
         else:
-            set_status_bar(
+            set_status_bar_and_log, self.view(
                 "there are multiple selected problems;"
                 " select only one to deactivate"
             )
@@ -952,7 +978,7 @@ class ActivateRuleCommand(sublime_plugin.TextCommand):
                 ruleList, activate_callback_wrapper
             )
         else:
-            set_status_bar("there are no ignored rules")
+            set_status_bar_and_log("there are no ignored rules", self.view)
 
     def activate_callback(self, i):
         ignored = load_ignored_rules()
@@ -960,4 +986,6 @@ class ActivateRuleCommand(sublime_plugin.TextCommand):
             activate_rule = ignored[i]
             ignored.remove(activate_rule)
             save_ignored_rules(ignored)
-            set_status_bar("activated rule " + str(activate_rule["id"]))
+            set_status_bar_and_log(
+                "activated rule " + str(activate_rule["id"]), self.view
+            )
